@@ -16,13 +16,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let contentWidth: CGFloat = 400
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let icon = NSImage(systemSymbolName: "camera.fill", accessibilityDescription: "UVC Mirror")
+        let icon = NSImage(systemSymbolName: "web.camera", accessibilityDescription: "UVC Mirror")
+            ?? NSImage(systemSymbolName: "camera.fill", accessibilityDescription: "UVC Mirror")
         icon?.isTemplate = true
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = icon
-        statusItem.button?.action = #selector(togglePanel)
+        statusItem.button?.action = #selector(statusItemClicked)
         statusItem.button?.target = self
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
         let contentView = MenuBarContentView(camera: camera, focus: focus, launchAtLogin: launchAtLogin) { [weak self] height in
             self?.resizePanel(toContentHeight: height)
@@ -44,6 +46,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.hidesOnDeactivate = false
         panel.contentView = hosting
     }
+
+    @objc private func statusItemClicked() {
+        let event = NSApp.currentEvent
+        let isSecondaryClick = event?.type == .rightMouseUp
+            || (event?.type == .leftMouseUp && event?.modifierFlags.contains(.control) == true)
+        if isSecondaryClick {
+            showContextMenu()
+        } else {
+            togglePanel()
+        }
+    }
+
+    // MARK: - Right-click menu
+
+    private func showContextMenu() {
+        if panel.isVisible { hidePanel() }
+        focus.refresh()
+        launchAtLogin.refresh()
+
+        let menu = NSMenu()
+
+        if focus.isAvailable {
+            let autoFocus = NSMenuItem(title: "Auto Focus", action: #selector(toggleAutoFocus), keyEquivalent: "")
+            autoFocus.target = self
+            autoFocus.state = focus.autoFocusEnabled ? .on : .off
+            menu.addItem(autoFocus)
+            menu.addItem(.separator())
+        }
+
+        let login = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        login.target = self
+        login.state = launchAtLogin.isEnabled ? .on : .off
+        menu.addItem(login)
+
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Quit UVC Mirror", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+
+        // Attach the menu only for this click so a normal left click still toggles the panel.
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    @objc private func toggleAutoFocus() {
+        focus.setAutoFocus(!focus.autoFocusEnabled)
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        launchAtLogin.setEnabled(!launchAtLogin.isEnabled)
+    }
+
+    // MARK: - Panel
 
     @objc private func togglePanel() {
         if panel.isVisible {
